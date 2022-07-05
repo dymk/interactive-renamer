@@ -1,49 +1,26 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::app_state::{
-    app_transition::AppTransition, configure_mapping_state::ConfigureMappingState,
-    selecting_input_state::SelectingInputState, AppState,
+use crate::{
+    app_state::{
+        app_transition::AppTransition, configure_mapping_state::ConfigureMappingState,
+        selecting_input_state::SelectingInputState, AppState,
+    },
+    dao::Dao,
 };
 
 pub struct App {
-    db: Rc<RefCell<sqlite::Connection>>,
+    dao: Rc<RefCell<Dao>>,
     pub selecting_input_state: SelectingInputState,
     pub configure_mapping_state: Option<ConfigureMappingState>,
 }
 
 impl App {
     pub fn new(db_path: &str, in_dir: &str, out_dir: &str) -> App {
-        let db = Rc::new(RefCell::new(sqlite::open(db_path).unwrap()));
-        db.borrow()
-            .execute(
-                r"
-            DROP TABLE IF EXISTS dir_mappings;
-        ",
-            )
-            .unwrap();
-
-        db.borrow()
-            .execute(
-                r"
-            CREATE TABLE IF NOT EXISTS dir_mappings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                in_path TEXT,
-
-                in_dir_finder_regex TEXT,
-                in_dir_replacer TEXT,
-                in_file_finder_regex TEXT,
-                in_file_replacer TEXT,
-
-                file_ext_filter TEXT
-            );
-        ",
-            )
-            .unwrap();
-
+        let dao = Rc::new(RefCell::new(Dao::new(db_path)));
         App {
-            db: db.clone(),
+            dao: dao.clone(),
             selecting_input_state: SelectingInputState::new(
-                db.clone(),
+                dao.clone(),
                 in_dir.to_string(),
                 out_dir.to_string(),
             ),
@@ -118,16 +95,18 @@ impl App {
                     .get(mapping_idx)
                     .unwrap();
 
-                self.configure_mapping_state = Some(ConfigureMappingState {
+                self.configure_mapping_state = Some(ConfigureMappingState::new(
                     mapping_idx,
-                    focused_input_idx: None,
-                    inputs: mapping.to_inputs(),
-                })
+                    mapping.to_mapped_dir(),
+                ));
             }
             AppTransition::AbortConfiguration => {
                 self.configure_mapping_state = None;
             }
-            AppTransition::CommitConfiguration => {}
+            AppTransition::CommitConfiguration(idx, mapped_dir) => {
+                self.configure_mapping_state = None;
+                self.selecting_input_state.set_mapping(idx, mapped_dir)
+            }
         };
     }
 }

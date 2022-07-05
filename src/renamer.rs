@@ -1,32 +1,23 @@
 use regex::Regex;
 
-pub struct Renamer {
-    finder: Regex,
-    replacer: String,
+pub struct Renamer<'a> {
+    finder: &'a str,
+    replacer: &'a str,
 }
 
-impl Renamer {
-    pub fn new(finder: &str, replacer: &str) -> Renamer {
-        Renamer {
-            finder: Regex::new(finder).unwrap(),
-            replacer: replacer.to_string(),
-        }
-    }
-
-    pub fn get_finder_str(&self) -> String {
-        self.finder.as_str().to_string()
-    }
-    pub fn get_replacer_str(&self) -> String {
-        self.replacer.clone()
+impl<'a> Renamer<'a> {
+    pub fn new(finder: &'a str, replacer: &'a str) -> Renamer<'a> {
+        Renamer { finder, replacer }
     }
 
     pub fn process(&self, input: &str) -> String {
-        let captures = match self.finder.captures(&input) {
+        let finder_regex = Regex::new(self.finder).unwrap();
+        let captures = match finder_regex.captures(&input) {
             Some(cap) => cap,
-            None => return self.replacer.clone(),
+            None => return self.replacer.to_string().clone(),
         };
 
-        let mut replaced = self.replacer.clone();
+        let mut replaced = self.replacer.to_string();
 
         let mut idx = 1;
         loop {

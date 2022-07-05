@@ -6,7 +6,10 @@ use std::{
 };
 
 use app::App;
-use app_state::{configure_mapping_state::ConfigureMappingState, mapping_state::MappingState};
+use app_state::{
+    configure_mapping_state::ConfigureMappingState,
+    mapping_state::{self, MappingState},
+};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
@@ -15,7 +18,7 @@ use crossterm::{
 
 use tui::{
     backend::{Backend, CrosstermBackend},
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Text},
     widgets::{Block, Borders, Cell, Clear, List, ListItem, Paragraph, Row, Table},
@@ -25,8 +28,8 @@ use tui::{
 type TTerminal = Terminal<CrosstermBackend<Stdout>>;
 
 mod app;
-// mod dir_renamer;
 mod app_state;
+mod dao;
 mod renamer;
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -64,7 +67,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 fn run_app(terminal: &mut TTerminal, mut app: App) -> io::Result<()> {
     loop {
-        app.selecting_input_state.update_mappings_cache();
         terminal.draw(|f| ui(f, &mut app))?;
 
         if let Event::Key(key) = event::read()? {
@@ -104,10 +106,16 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
 
 fn ui_selecting_input<B: Backend>(f: &mut Frame<B>, app: &App, active: bool) {
     let size = f.size();
+    let deemph_or_style = |style: Style| {
+        if active {
+            style
+        } else {
+            Style::default()
+        }
+    };
 
     let layout = Layout::default()
         .direction(Direction::Horizontal)
-        .margin(1)
         .constraints(
             [
                 Constraint::Percentage(50), // input elements
@@ -145,7 +153,7 @@ fn ui_selecting_input<B: Backend>(f: &mut Frame<B>, app: &App, active: bool) {
                     Span::raw("Inputs - "),
                     Span::styled(
                         app.selecting_input_state.in_dir(),
-                        Style::default().add_modifier(Modifier::BOLD),
+                        deemph_or_style(Style::default().add_modifier(Modifier::BOLD)),
                     ),
                 ])
                 .borders(Borders::ALL),
@@ -178,7 +186,7 @@ fn ui_selecting_input<B: Backend>(f: &mut Frame<B>, app: &App, active: bool) {
                 Span::raw("Outputs - "),
                 Span::styled(
                     app.selecting_input_state.out_dir(),
-                    Style::default().add_modifier(Modifier::BOLD),
+                    deemph_or_style(Style::default().add_modifier(Modifier::BOLD)),
                 ),
             ])
             .borders(Borders::ALL),
@@ -186,121 +194,214 @@ fn ui_selecting_input<B: Backend>(f: &mut Frame<B>, app: &App, active: bool) {
     f.render_widget(out_dirs_block, layout[1]);
 }
 
-fn ui_configure_mapping<B: Backend>(f: &mut Frame<B>, app: &App, state: &ConfigureMappingState) {
-    let mapping = app
-        .selecting_input_state
-        .mappings()
-        .get(state.mapping_idx)
-        .unwrap();
+fn ui_configure_mapping<B: Backend>(
+    f: &mut Frame<B>,
+    app: &App,
+    configure_mapping_state: &ConfigureMappingState,
+) {
+    // render parent popup + clear background
+    let popup_rect = {
+        let popup_rect = Layout::default()
+            .direction(Direction::Horizontal)
+            .horizontal_margin(10)
+            .vertical_margin(1)
+            .constraints([Constraint::Percentage(100)].as_ref())
+            .split(f.size())[0];
 
-    let size = f.size();
-    let layout = Layout::default()
-        .direction(Direction::Horizontal)
-        .horizontal_margin(10)
-        .vertical_margin(5)
-        .constraints([Constraint::Percentage(100)].as_ref())
-        .split(size);
+        let block = Block::default()
+            .title(Span::styled(
+                "Configure Mapping",
+                Style::default().add_modifier(Modifier::BOLD),
+            ))
+            .borders(Borders::ALL);
 
-    let (in_path, out_path) = match mapping {
-        MappingState::HasMapping(mapping) => {
-            (mapping.in_path().to_string(), Some(mapping.out_path()))
-        }
-        MappingState::Unmapped(in_path) => (in_path.clone(), None),
+        let popup_rect_inner = block.inner(popup_rect);
+        f.render_widget(Clear, popup_rect);
+        f.render_widget(block, popup_rect);
+        popup_rect_inner
     };
 
-    let in_path = Span::styled(in_path, Style::default().add_modifier(Modifier::BOLD));
-    let out_path = match out_path {
-        Some(out_path) => Span::styled(out_path, Style::default().add_modifier(Modifier::BOLD)),
-        None => Span::styled(
-            "(none)",
-            Style::default()
-                .add_modifier(Modifier::ITALIC)
-                .fg(Color::DarkGray),
-        ),
-    };
-
-    let block = Block::default()
-        .title(Span::raw("Configure Mapping"))
-        .borders(Borders::ALL);
-    let size = block.inner(layout[0]);
-    f.render_widget(Clear, layout[0]);
-    f.render_widget(block, layout[0]);
-
-    let layout = Layout::default()
+    // compute main layout within the popup
+    let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
         .constraints(
             [
-                Constraint::Length(4), // input / output dir display
-                Constraint::Min(1),    // configuration block
+                Constraint::Length(4), // status / input / output dir
+                Constraint::Length(9), // input configurations
+                Constraint::Min(1),    // file rename preview
             ]
             .as_ref(),
         )
-        .split(size);
+        .split(popup_rect);
 
-    let table = Table::new(vec![
-        Row::new(vec![
-            Cell::from(Span::raw("Input Dir")),
-            Cell::from(in_path),
-        ]),
-        Row::new(vec![
-            Cell::from(Span::raw("Output Dir")),
-            Cell::from(out_path),
-        ]),
-    ])
-    .widths([Constraint::Length(10), Constraint::Length(100)].as_ref());
-    f.render_widget(table, layout[0]);
+    let status_rect = main_layout[0];
+    let config_rect = main_layout[1];
+    let file_preview_rect = main_layout[2];
 
-    let size = layout[1];
-    let layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(
-            [
-                Constraint::Length(3), // 0 - file type fileter
-                Constraint::Length(3), // 1 - dir finder
-                Constraint::Length(3), // 2 - dir replacer
-                Constraint::Length(3), // 3 - file finder
-                Constraint::Length(3), // 4 - file replacer
-                Constraint::Min(1),    // x - rest of padding
-            ]
-            .as_ref(),
-        )
-        .split(size);
+    // render status rect
+    {
+        let existing_mapping = app
+            .selecting_input_state
+            .mappings()
+            .get(configure_mapping_state.mapping_idx)
+            .unwrap();
 
-    let input_block = |f: &mut Frame<B>, idx: usize, title: &str| {
-        let is_active = state.is_active(idx);
-        let rect = layout[idx];
-        let text = state.input_val(idx);
-
-        let style = if is_active {
-            Style::default().fg(Color::Yellow)
-        } else {
-            Style::default()
+        let status_span = match existing_mapping {
+            MappingState::HasMapping(committed_mapping) => {
+                if *committed_mapping == configure_mapping_state.mapped_dir {
+                    Span::styled(
+                        "Saved",
+                        Style::default()
+                            .fg(Color::LightGreen)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                } else {
+                    Span::styled(
+                        "Changed",
+                        Style::default()
+                            .fg(Color::LightYellow)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                }
+            }
+            MappingState::Unmapped(_) => Span::styled(
+                "New",
+                Style::default()
+                    .fg(Color::LightBlue)
+                    .add_modifier(Modifier::ITALIC | Modifier::BOLD),
+            ),
         };
 
-        let dir_matcher_block = Block::default()
-            .borders(Borders::ALL)
-            .style(style)
-            .title(title);
-        let inside = dir_matcher_block.inner(rect);
-        f.render_widget(dir_matcher_block, rect);
+        let in_path_span = Span::styled(
+            configure_mapping_state.mapped_dir.in_path(),
+            Style::default().add_modifier(Modifier::BOLD),
+        );
+        let out_path_span = Span::styled(
+            configure_mapping_state.mapped_dir.out_path(),
+            Style::default().add_modifier(Modifier::BOLD),
+        );
 
-        let text_block = Paragraph::new(Text::raw(text));
-        f.render_widget(text_block, inside);
+        let table = Table::new(vec![
+            Row::new(vec![
+                Cell::from(Span::raw("Status")),
+                Cell::from(status_span),
+            ]),
+            Row::new(vec![
+                Cell::from(Span::raw("Input Dir")),
+                Cell::from(in_path_span),
+            ]),
+            Row::new(vec![
+                Cell::from(Span::raw("Output Dir")),
+                Cell::from(out_path_span),
+            ]),
+        ])
+        .widths([Constraint::Length(16), Constraint::Length(100)].as_ref());
+        f.render_widget(table, status_rect);
+    }
 
-        if is_active {
-            f.set_cursor(rect.x + 1 + (text.len() as u16), rect.y + 1)
-        }
-    };
+    // render config input rect
+    {
+        let config_parent_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(
+                [
+                    Constraint::Length(3), // 0 - file ext filter
+                    Constraint::Length(3), // 1 - dir matcher / replacer
+                    Constraint::Length(3), // 2 - file matcher / replacer
+                    Constraint::Min(1),    // x - rest of padding
+                ]
+                .as_ref(),
+            )
+            .split(config_rect);
 
-    input_block(f, 0, "File Filter");
-    input_block(f, 1, "Dir Matcher");
-    input_block(f, 2, "File Filter");
-    input_block(f, 3, "File Filter");
-    input_block(f, 4, "File Filter");
+        let config_input_rects = vec![
+            // file ext filter
+            vec![config_parent_layout[0]],
+            // dir matcher / replacer
+            Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .split(config_parent_layout[1]),
+            // file matcher / replacer
+            Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .split(config_parent_layout[2]),
+        ];
 
-    // match mapping {
-    //     MappingState::HasMapping(mapping) => todo!(),
-    //     MappingState::Unmapped(in_path) => todo!(),
-    // }
+        let input_block = |f: &mut Frame<B>, rect: Rect, config_idx: usize, title: &str| {
+            let config_input_is_active = configure_mapping_state.is_active(config_idx);
+            let text = configure_mapping_state.input_val(config_idx);
+
+            let border_style = if config_input_is_active {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default()
+            };
+            let title_style = if config_input_is_active {
+                border_style.add_modifier(Modifier::BOLD)
+            } else {
+                border_style
+            };
+
+            let dir_matcher_block = Block::default()
+                .borders(Borders::ALL)
+                .style(border_style)
+                .title(Span::styled(title, title_style));
+            let inside = dir_matcher_block.inner(rect);
+            f.render_widget(dir_matcher_block, rect);
+
+            let text_block = Paragraph::new(Text::raw(text));
+            f.render_widget(text_block, inside);
+
+            if config_input_is_active {
+                f.set_cursor(rect.x + 1 + (text.len() as u16), rect.y + 1)
+            }
+        };
+
+        input_block(f, config_input_rects[0][0], 0, "File Types");
+        input_block(f, config_input_rects[1][0], 1, "Dir Matcher");
+        input_block(f, config_input_rects[1][1], 2, "Dir Filter");
+        input_block(f, config_input_rects[2][0], 3, "File Matcher");
+        input_block(f, config_input_rects[2][1], 4, "File Filter");
+    }
+
+    // render file preview rect
+    {
+        let file_preview_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(file_preview_rect);
+
+        let in_file_rect = file_preview_layout[0];
+        let out_file_rect = file_preview_layout[1];
+
+        let in_file_list = {
+            let files_list = vec![];
+            let block = Block::default().borders(Borders::ALL).title(vec![
+                Span::raw("Input Files - "),
+                Span::styled(
+                    format!("{} ", files_list.len()),
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
+            ]);
+            List::new(files_list).block(block)
+        };
+
+        let out_file_list = {
+            let files_list = vec![];
+            let block = Block::default().borders(Borders::ALL).title(vec![
+                Span::raw("Output Files - "),
+                Span::styled(
+                    format!("{} ", files_list.len()),
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
+            ]);
+            List::new(files_list).block(block)
+        };
+
+        f.render_widget(in_file_list, in_file_rect);
+        f.render_widget(out_file_list, out_file_rect);
+    }
 }

@@ -27,7 +27,7 @@ pub trait AppState {
     fn on_bksp(&mut self) -> AppTransition {
         AppTransition::None
     }
-    fn on_char(&mut self, c: char) -> AppTransition {
+    fn on_char(&mut self, _c: char) -> AppTransition {
         AppTransition::None
     }
     fn requesting_input(&self) -> bool;

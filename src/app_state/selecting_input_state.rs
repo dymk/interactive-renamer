@@ -1,7 +1,8 @@
-use std::{cell::RefCell, path::Path, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
-use sqlite::{Connection, State};
 use tui::widgets::ListState;
+
+use crate::dao::Dao;
 
 use super::{
     app_transition::AppTransition,
@@ -10,7 +11,7 @@ use super::{
 };
 
 pub struct SelectingInputState {
-    db: Rc<RefCell<Connection>>,
+    dao: Rc<RefCell<Dao>>,
     in_dir: String,
     out_dir: String,
     mapping_states: Vec<MappingState>,
@@ -19,22 +20,20 @@ pub struct SelectingInputState {
 }
 
 impl SelectingInputState {
-    pub fn new(
-        db: Rc<RefCell<Connection>>,
-        in_dir: String,
-        out_dir: String,
-    ) -> SelectingInputState {
+    pub fn new(dao: Rc<RefCell<Dao>>, in_dir: String, out_dir: String) -> SelectingInputState {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
 
-        SelectingInputState {
-            db,
+        let mut ret = SelectingInputState {
+            dao,
             in_dir,
             out_dir,
             mapping_states: vec![],
             selected_row_idx: 0,
             list_state: RefCell::new(list_state),
-        }
+        };
+        ret.update_mappings_cache();
+        ret
     }
 
     pub fn list_state(&self) -> &RefCell<ListState> {
@@ -49,47 +48,29 @@ impl SelectingInputState {
         &self.out_dir
     }
 
-    pub fn update_mappings_cache(&mut self) {
+    fn update_mappings_cache(&mut self) {
         self.mapping_states = std::fs::read_dir(&self.in_dir)
             .unwrap()
             .filter(|entry| entry.as_ref().unwrap().metadata().unwrap().is_dir())
             .map(|entry| entry.unwrap().path().to_string_lossy().to_string())
             .map(|path| path.as_str()[self.in_dir.len()..].to_string())
             .map(|in_path| {
-                let db = self.db.borrow();
-                let mut statement = db
-                    .prepare(
-                        r"
-                    SELECT 
-                        file_ext_filter,
-                        in_dir_finder_regex, 
-                        in_dir_replacer,
-                        in_file_finder_regex,
-                        in_file_replacer
-                    FROM dir_mappings 
-                    WHERE in_path = ?
-                ",
-                    )
-                    .unwrap();
-
-                statement.bind(1, in_path.as_str()).unwrap();
-
-                if let State::Row = statement.next().unwrap() {
-                    MappingState::HasMapping(MappedDir::from_inputs(
-                        Path::new(&in_path).to_path_buf(),
-                        [
-                            statement.read::<String>(0).unwrap(),
-                            statement.read::<String>(1).unwrap(),
-                            statement.read::<String>(2).unwrap(),
-                            statement.read::<String>(3).unwrap(),
-                            statement.read::<String>(4).unwrap(),
-                        ],
-                    ))
+                if let Some(mapped_dir) = self
+                    .dao
+                    .borrow()
+                    .get_mapped_dir_by_in_path(in_path.as_str())
+                {
+                    MappingState::HasMapping(mapped_dir)
                 } else {
                     MappingState::Unmapped(in_path)
                 }
             })
             .collect()
+    }
+
+    pub fn set_mapping(&mut self, mapping_idx: usize, mapped_dir: MappedDir) {
+        self.dao.borrow().upsert_mapped_dir(&mapped_dir);
+        self.mapping_states[mapping_idx] = MappingState::HasMapping(mapped_dir);
     }
 
     pub fn mappings(&self) -> &Vec<MappingState> {
@@ -119,21 +100,7 @@ impl AppState for SelectingInputState {
     }
 
     fn on_enter(&mut self) -> AppTransition {
-        // let mapping = self.mappings().get(self.in_dirs_selected_idx).unwrap();
-        // let inputs = match mapping {
-        //     MappingState::HasMapping(mapping) => mapping.to_inputs(),
-        //     MappingState::Unmapped(_) => {
-        //         [DEFAULT_FILE_FILTER, "(.+)", "$1", "(.+)", "$1"].map(ToString::to_string)
-        //     }
-        // };
-
-        // let configure_mapping_state = ConfigureMappingState {
-        //     mapping_idx: self.in_dirs_selected_idx,
-        //     focused_input_idx: None,
-        //     inputs,
-        // };
-        // self.app_state = AppState::ConfigureMapping(configure_mapping_state);
-
+        let mapping = self.mappings().get(self.selected_row_idx).unwrap();
         AppTransition::StartConfiguringIdx(self.selected_row_idx)
     }
 
