@@ -2,3 +2,4 @@
 *.db
 /.vscode
 /fixtures/out_dir/*
+.DS_Store
