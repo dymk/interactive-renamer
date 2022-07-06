@@ -1,3 +1,4 @@
 /target
 *.db
 /.vscode
+/fixtures/out_dir/*

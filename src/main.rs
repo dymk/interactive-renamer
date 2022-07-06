@@ -1,5 +1,4 @@
 use std::{
-    borrow::BorrowMut,
     error::Error,
     io::{self, Stdout},
     ops::DerefMut,
@@ -31,6 +30,7 @@ mod app;
 mod app_state;
 mod dao;
 mod renamer;
+mod utils;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let db_path = std::env::args().nth(1).expect("arg 1: db.sqlite");
@@ -92,12 +92,7 @@ fn run_app(terminal: &mut TTerminal, mut app: App) -> io::Result<()> {
 }
 
 fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
-    let is_selecting = if let Some(_) = app.configure_mapping_state {
-        false
-    } else {
-        true
-    };
-
+    let is_selecting = !app.configure_mapping_state.is_some();
     ui_selecting_input(f, app, is_selecting);
     if let Some(state) = &app.configure_mapping_state {
         ui_configure_mapping(f, app, &state);
@@ -105,7 +100,6 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
 }
 
 fn ui_selecting_input<B: Backend>(f: &mut Frame<B>, app: &App, active: bool) {
-    let size = f.size();
     let deemph_or_style = |style: Style| {
         if active {
             style
@@ -114,7 +108,16 @@ fn ui_selecting_input<B: Backend>(f: &mut Frame<B>, app: &App, active: bool) {
         }
     };
 
+    let max_log_lines = 16;
     let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(max_log_lines + 2)].as_ref())
+        .split(f.size());
+
+    let inputs_outputs_rect = layout[0];
+    let logs_rect = layout[1];
+
+    let inputs_outputs_layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(
             [
@@ -123,19 +126,18 @@ fn ui_selecting_input<B: Backend>(f: &mut Frame<B>, app: &App, active: bool) {
             ]
             .as_ref(),
         )
-        .split(size);
+        .split(inputs_outputs_rect);
 
     let mappings = app.selecting_input_state.mappings();
 
     let input_items: Vec<ListItem> = mappings
         .iter()
         .map(|mapping| {
-            let span = match mapping {
-                MappingState::Unmapped(path) => Span::styled(path, Style::default().fg(Color::Red)),
-                MappingState::HasMapping(mapping) => {
-                    Span::styled(mapping.in_path(), Style::default().fg(Color::Green))
-                }
+            let style = match mapping {
+                MappingState::Unmapped { in_path: _ } => Style::default().fg(Color::Red),
+                MappingState::HasMapping { mapped_dir: _ } => Style::default().fg(Color::Green),
             };
+            let span = Span::styled(mapping.in_dir_name(), style);
             ListItem::new(span)
         })
         .collect();
@@ -147,6 +149,7 @@ fn ui_selecting_input<B: Backend>(f: &mut Frame<B>, app: &App, active: bool) {
     };
 
     let in_dirs_list = List::new(input_items)
+        .highlight_style(in_dirs_highlight_style)
         .block(
             Block::default()
                 .title(vec![
@@ -157,12 +160,11 @@ fn ui_selecting_input<B: Backend>(f: &mut Frame<B>, app: &App, active: bool) {
                     ),
                 ])
                 .borders(Borders::ALL),
-        )
-        .highlight_style(in_dirs_highlight_style);
+        );
 
     f.render_stateful_widget(
         in_dirs_list,
-        layout[0],
+        inputs_outputs_layout[0],
         app.selecting_input_state
             .list_state()
             .borrow_mut()
@@ -173,25 +175,49 @@ fn ui_selecting_input<B: Backend>(f: &mut Frame<B>, app: &App, active: bool) {
         .iter()
         .map(|mapping| {
             let span = match mapping {
-                MappingState::HasMapping(mapping) => Span::raw(mapping.out_path()),
-                MappingState::Unmapped(_) => Span::raw(""),
+                MappingState::HasMapping { mapped_dir } => match mapped_dir.out_dir_name() {
+                    Some(out_path) => Span::raw(out_path),
+                    None => Span::styled("error", Style::default().fg(Color::Red)),
+                },
+                MappingState::Unmapped { in_path: _ } => Span::raw(""),
             };
             ListItem::new(span)
         })
         .collect();
 
-    let out_dirs_block = List::new(output_items).block(
-        Block::default()
-            .title(vec![
-                Span::raw("Outputs - "),
-                Span::styled(
-                    app.selecting_input_state.out_dir(),
-                    deemph_or_style(Style::default().add_modifier(Modifier::BOLD)),
-                ),
-            ])
-            .borders(Borders::ALL),
+    let out_dirs_block = List::new(output_items)
+        .highlight_style(in_dirs_highlight_style)
+        .block(
+            Block::default()
+                .title(vec![
+                    Span::raw("Outputs - "),
+                    Span::styled(
+                        app.selecting_input_state.out_dir(),
+                        deemph_or_style(Style::default().add_modifier(Modifier::BOLD)),
+                    ),
+                ])
+                .borders(Borders::ALL),
+        );
+    f.render_stateful_widget(
+        out_dirs_block,
+        inputs_outputs_layout[1],
+        app.selecting_input_state
+            .list_state()
+            .borrow_mut()
+            .deref_mut(),
     );
-    f.render_widget(out_dirs_block, layout[1]);
+
+    {
+        let num_logs = app.selecting_input_state.get_logs().len();
+        let all_logs = app.selecting_input_state.get_logs();
+        let logs_window = &all_logs[num_logs.saturating_sub(max_log_lines.into())..num_logs];
+        let log_lines: Vec<_> = logs_window
+            .iter()
+            .map(|log| ListItem::new(Span::raw(log)))
+            .collect();
+        let logs = List::new(log_lines).block(Block::default().borders(Borders::ALL).title("Logs"));
+        f.render_widget(logs, logs_rect);
+    }
 }
 
 fn ui_configure_mapping<B: Backend>(
@@ -248,8 +274,8 @@ fn ui_configure_mapping<B: Backend>(
             .unwrap();
 
         let status_span = match existing_mapping {
-            MappingState::HasMapping(committed_mapping) => {
-                if *committed_mapping == configure_mapping_state.mapped_dir {
+            MappingState::HasMapping { mapped_dir } => {
+                if mapped_dir.configs_eq(&configure_mapping_state.mapped_dir) {
                     Span::styled(
                         "Saved",
                         Style::default()
@@ -265,7 +291,7 @@ fn ui_configure_mapping<B: Backend>(
                     )
                 }
             }
-            MappingState::Unmapped(_) => Span::styled(
+            MappingState::Unmapped { in_path: _ } => Span::styled(
                 "New",
                 Style::default()
                     .fg(Color::LightBlue)
@@ -274,13 +300,13 @@ fn ui_configure_mapping<B: Backend>(
         };
 
         let in_path_span = Span::styled(
-            configure_mapping_state.mapped_dir.in_path(),
+            configure_mapping_state.mapped_dir.in_dir_name(),
             Style::default().add_modifier(Modifier::BOLD),
         );
-        let out_path_span = Span::styled(
-            configure_mapping_state.mapped_dir.out_path(),
-            Style::default().add_modifier(Modifier::BOLD),
-        );
+        let out_path_span = match configure_mapping_state.mapped_dir.out_dir_name() {
+            Some(out_path) => Span::styled(out_path, Style::default().add_modifier(Modifier::BOLD)),
+            None => Span::styled("error", Style::default().fg(Color::Red)),
+        };
 
         let table = Table::new(vec![
             Row::new(vec![
@@ -330,41 +356,75 @@ fn ui_configure_mapping<B: Backend>(
                 .split(config_parent_layout[2]),
         ];
 
-        let input_block = |f: &mut Frame<B>, rect: Rect, config_idx: usize, title: &str| {
-            let config_input_is_active = configure_mapping_state.is_active(config_idx);
-            let text = configure_mapping_state.input_val(config_idx);
+        let input_block =
+            |f: &mut Frame<B>, rect: Rect, config_idx: usize, title: &str, is_valid: bool| {
+                let config_input_is_active = configure_mapping_state.is_active(config_idx);
+                let text = configure_mapping_state.input_val(config_idx);
 
-            let border_style = if config_input_is_active {
-                Style::default().fg(Color::Yellow)
-            } else {
-                Style::default()
+                let border_style = if !is_valid {
+                    Style::default().fg(Color::Red)
+                } else if config_input_is_active {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                };
+                let title_style = if config_input_is_active {
+                    border_style.add_modifier(Modifier::BOLD)
+                } else {
+                    border_style
+                };
+
+                let dir_matcher_block = Block::default()
+                    .borders(Borders::ALL)
+                    .style(border_style)
+                    .title(Span::styled(title, title_style));
+                let inside = dir_matcher_block.inner(rect);
+                f.render_widget(dir_matcher_block, rect);
+
+                let text_block = Paragraph::new(Text::raw(text));
+                f.render_widget(text_block, inside);
+
+                if config_input_is_active {
+                    f.set_cursor(rect.x + 1 + (text.len() as u16), rect.y + 1)
+                }
             };
-            let title_style = if config_input_is_active {
-                border_style.add_modifier(Modifier::BOLD)
-            } else {
-                border_style
-            };
 
-            let dir_matcher_block = Block::default()
-                .borders(Borders::ALL)
-                .style(border_style)
-                .title(Span::styled(title, title_style));
-            let inside = dir_matcher_block.inner(rect);
-            f.render_widget(dir_matcher_block, rect);
-
-            let text_block = Paragraph::new(Text::raw(text));
-            f.render_widget(text_block, inside);
-
-            if config_input_is_active {
-                f.set_cursor(rect.x + 1 + (text.len() as u16), rect.y + 1)
-            }
-        };
-
-        input_block(f, config_input_rects[0][0], 0, "File Types");
-        input_block(f, config_input_rects[1][0], 1, "Dir Matcher");
-        input_block(f, config_input_rects[1][1], 2, "Dir Filter");
-        input_block(f, config_input_rects[2][0], 3, "File Matcher");
-        input_block(f, config_input_rects[2][1], 4, "File Filter");
+        let mapped_dir = &configure_mapping_state.mapped_dir;
+        input_block(
+            f,
+            config_input_rects[0][0],
+            0,
+            "File Types",
+            mapped_dir.has_valid_file_filter(),
+        );
+        input_block(
+            f,
+            config_input_rects[1][0],
+            1,
+            "Dir Matcher",
+            mapped_dir.has_valid_dir_renamer(),
+        );
+        input_block(
+            f,
+            config_input_rects[1][1],
+            2,
+            "Dir Replacer",
+            mapped_dir.has_valid_dir_renamer(),
+        );
+        input_block(
+            f,
+            config_input_rects[2][0],
+            3,
+            "File Matcher",
+            mapped_dir.has_valid_file_renamer(),
+        );
+        input_block(
+            f,
+            config_input_rects[2][1],
+            4,
+            "File Replacer",
+            mapped_dir.has_valid_file_renamer(),
+        );
     }
 
     // render file preview rect
@@ -374,11 +434,27 @@ fn ui_configure_mapping<B: Backend>(
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(file_preview_rect);
 
+        let mapped_dir = &configure_mapping_state.mapped_dir;
         let in_file_rect = file_preview_layout[0];
         let out_file_rect = file_preview_layout[1];
 
+        let file_mappings = mapped_dir.file_mappings();
+
         let in_file_list = {
-            let files_list = vec![];
+            let files_list: Vec<_> = file_mappings
+                .iter()
+                .map(|mapping| {
+                    let span = match mapping {
+                        mapping_state::FileMapping::MappedTo {
+                            from_name: from_path,
+                            to_name: _,
+                        } => Span::styled(from_path, Style::default().add_modifier(Modifier::BOLD)),
+                        mapping_state::FileMapping::Filtered { name: path } => Span::raw(path),
+                    };
+                    ListItem::new(span)
+                })
+                .collect();
+
             let block = Block::default().borders(Borders::ALL).title(vec![
                 Span::raw("Input Files - "),
                 Span::styled(
@@ -390,11 +466,29 @@ fn ui_configure_mapping<B: Backend>(
         };
 
         let out_file_list = {
-            let files_list = vec![];
+            let mut num_files = 0;
+            let files_list: Vec<_> = file_mappings
+                .iter()
+                .map(|mapping| {
+                    let span = match mapping {
+                        mapping_state::FileMapping::MappedTo {
+                            from_name: _,
+                            to_name,
+                        } => {
+                            num_files += 1;
+                            Span::raw(to_name)
+                        }
+                        mapping_state::FileMapping::Filtered { name: _ } => {
+                            Span::styled("", Style::default().add_modifier(Modifier::ITALIC))
+                        }
+                    };
+                    ListItem::new(span)
+                })
+                .collect();
             let block = Block::default().borders(Borders::ALL).title(vec![
                 Span::raw("Output Files - "),
                 Span::styled(
-                    format!("{} ", files_list.len()),
+                    format!("{} ", num_files),
                     Style::default().add_modifier(Modifier::BOLD),
                 ),
             ]);

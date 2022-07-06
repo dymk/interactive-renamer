@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use rusqlite::{self, params, Connection};
 
 use crate::app_state::mapping_state::MappedDir;

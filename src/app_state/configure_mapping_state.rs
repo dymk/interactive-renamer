@@ -73,14 +73,18 @@ impl AppState for ConfigureMappingState {
 
     fn on_char(&mut self, c: char) -> AppTransition {
         if let Some(idx) = self.focused_input_idx {
-            self.mapped_dir.config_mut(idx).push(c);
+            self.mapped_dir.config_mut(idx, &|cfg| {
+                cfg.push(c);
+            })
         };
         AppTransition::None
     }
 
     fn on_bksp(&mut self) -> AppTransition {
         if let Some(idx) = self.focused_input_idx {
-            self.mapped_dir.config_mut(idx).pop();
+            self.mapped_dir.config_mut(idx, &|cfg| {
+                cfg.pop();
+            });
         };
         AppTransition::None
     }

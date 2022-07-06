@@ -1,18 +1,26 @@
 use regex::Regex;
 
-pub struct Renamer<'a> {
-    finder: &'a str,
-    replacer: &'a str,
+#[derive(Clone)]
+pub struct Renamer {
+    finder: Regex,
+    replacer: String,
 }
 
-impl<'a> Renamer<'a> {
-    pub fn new(finder: &'a str, replacer: &'a str) -> Renamer<'a> {
-        Renamer { finder, replacer }
+impl Renamer {
+    pub fn new(finder: &str, replacer: &str) -> Option<Renamer> {
+        let finder = match Regex::new(finder) {
+            Ok(r) => r,
+            Err(_) => return None,
+        };
+
+        Some(Renamer {
+            finder,
+            replacer: replacer.to_string(),
+        })
     }
 
     pub fn process(&self, input: &str) -> String {
-        let finder_regex = Regex::new(self.finder).unwrap();
-        let captures = match finder_regex.captures(&input) {
+        let captures = match self.finder.captures(&input) {
             Some(cap) => cap,
             None => return self.replacer.to_string().clone(),
         };
@@ -44,15 +52,15 @@ mod test {
 
     #[test]
     fn works() {
-        let r = Renamer::new("(.+)", "$1");
+        let r = Renamer::new("(.+)", "$1").unwrap();
         assert_eq!("foo", r.process("foo"));
         assert_eq!("asd23$1", r.process("asd23$1"));
 
-        let r = Renamer::new("(.+)", "$1_asdf");
+        let r = Renamer::new("(.+)", "$1_asdf").unwrap();
         assert_eq!("foo_asdf", r.process("foo"));
         assert_eq!("asd23$1_asdf", r.process("asd23$1"));
 
-        let r = Renamer::new("foo(\\d+)", "$1_foo");
+        let r = Renamer::new("foo(\\d+)", "$1_foo").unwrap();
         assert_eq!("1_foo", r.process("foo1"));
         assert_eq!("345_foo", r.process("foo345"));
         assert_eq!("$1_foo", r.process("foo"));

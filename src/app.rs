@@ -9,7 +9,7 @@ use crate::{
 };
 
 pub struct App {
-    dao: Rc<RefCell<Dao>>,
+    // dao: Rc<RefCell<Dao>>,
     pub selecting_input_state: SelectingInputState,
     pub configure_mapping_state: Option<ConfigureMappingState>,
 }
@@ -18,7 +18,7 @@ impl App {
     pub fn new(db_path: &str, in_dir: &str, out_dir: &str) -> App {
         let dao = Rc::new(RefCell::new(Dao::new(db_path)));
         App {
-            dao: dao.clone(),
+            // dao: dao.clone(),
             selecting_input_state: SelectingInputState::new(
                 dao.clone(),
                 in_dir.to_string(),
@@ -105,7 +105,7 @@ impl App {
             }
             AppTransition::CommitConfiguration(idx, mapped_dir) => {
                 self.configure_mapping_state = None;
-                self.selecting_input_state.set_mapping(idx, mapped_dir)
+                self.selecting_input_state.commit_mapping(idx, mapped_dir)
             }
         };
     }
