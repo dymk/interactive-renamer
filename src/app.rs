@@ -1,5 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
+use crossterm::event::Event;
+
 use crate::{
     app_state::{
         app_transition::AppTransition, configure_mapping_state::ConfigureMappingState,
@@ -12,6 +14,11 @@ pub struct App {
     // dao: Rc<RefCell<Dao>>,
     pub selecting_input_state: SelectingInputState,
     pub configure_mapping_state: Option<ConfigureMappingState>,
+}
+
+pub enum AppResult {
+    KeepGoing,
+    Quit,
 }
 
 impl App {
@@ -34,60 +41,15 @@ impl App {
         }
         return &mut self.selecting_input_state;
     }
-    fn current_state(&self) -> &dyn AppState {
-        if let Some(cms) = self.configure_mapping_state.as_ref() {
-            return cms;
-        }
-        return &self.selecting_input_state;
-    }
 
-    pub fn on_up(&mut self) {
-        let t = self.current_state_mut().on_up();
-        self.handle_transition(t);
-    }
-
-    pub fn on_down(&mut self) {
-        let t = self.current_state_mut().on_down();
-        self.handle_transition(t);
-    }
-
-    pub fn on_tab(&mut self) {
-        let t = self.current_state_mut().on_tab();
-        self.handle_transition(t);
-    }
-
-    pub fn on_backtab(&mut self) {
-        let t = self.current_state_mut().on_backtab();
-        self.handle_transition(t);
-    }
-
-    pub fn on_enter(&mut self) {
-        let t = self.current_state_mut().on_enter();
-        self.handle_transition(t);
-    }
-
-    pub fn on_esc(&mut self) {
-        let t = self.current_state_mut().on_esc();
+    pub fn on_event(&mut self, event: Event) -> AppResult {
+        let t = self.current_state_mut().on_event(event);
         self.handle_transition(t)
     }
 
-    pub fn on_bksp(&mut self) {
-        let t = self.current_state_mut().on_bksp();
-        self.handle_transition(t);
-    }
-
-    pub fn on_char(&mut self, c: char) {
-        let t = self.current_state_mut().on_char(c);
-        self.handle_transition(t);
-    }
-
-    pub fn requesting_input(&self) -> bool {
-        self.current_state().requesting_input()
-    }
-
-    fn handle_transition(&mut self, transition: AppTransition) {
+    fn handle_transition(&mut self, transition: AppTransition) -> AppResult {
         match transition {
-            AppTransition::None => {}
+            AppTransition::None => AppResult::KeepGoing,
             AppTransition::StartConfiguringIdx(mapping_idx) => {
                 let mapping = self
                     .selecting_input_state
@@ -99,14 +61,18 @@ impl App {
                     mapping_idx,
                     mapping.to_mapped_dir(),
                 ));
+                AppResult::KeepGoing
             }
             AppTransition::AbortConfiguration => {
                 self.configure_mapping_state = None;
+                AppResult::KeepGoing
             }
             AppTransition::CommitConfiguration(idx, mapped_dir) => {
                 self.configure_mapping_state = None;
-                self.selecting_input_state.commit_mapping(idx, mapped_dir)
+                self.selecting_input_state.commit_mapping(idx, mapped_dir);
+                AppResult::KeepGoing
             }
-        };
+            AppTransition::Quit => AppResult::Quit,
+        }
     }
 }

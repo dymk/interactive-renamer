@@ -3,7 +3,7 @@ use regex::Regex;
 
 use crate::{
     renamer::Renamer,
-    utils::{file_name, split_ext},
+    path_utils::{file_name, split_ext},
 };
 
 pub const NUM_CONFIGS: usize = 5;
@@ -149,16 +149,10 @@ impl MappedDir {
         ]
     }
 
-    pub fn config_mut<F>(&mut self, idx: usize, changer: &F)
-    where
-        F: Fn(&mut String),
+    pub fn set_config(&mut self, idx: usize, new_val: &str)
     {
-        changer(self.configs.get_mut(idx).unwrap());
+        self.configs.get_mut(idx).unwrap().replace_range(.., new_val);
         self.configs_changed();
-    }
-
-    pub fn config(&self, idx: usize) -> &String {
-        self.configs.get(idx).unwrap()
     }
 }
 

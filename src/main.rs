@@ -4,13 +4,13 @@ use std::{
     ops::DerefMut,
 };
 
-use app::App;
+use app::{App, AppResult};
 use app_state::{
     configure_mapping_state::ConfigureMappingState,
     mapping_state::{self, MappingState},
 };
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    event::{self, DisableMouseCapture, EnableMouseCapture},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -19,8 +19,8 @@ use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Span, Text},
-    widgets::{Block, Borders, Cell, Clear, List, ListItem, Paragraph, Row, Table},
+    text::Span,
+    widgets::{Block, Borders, Cell, Clear, List, ListItem, Row, Table, TextInput, TextInputState},
     Frame, Terminal,
 };
 
@@ -29,8 +29,10 @@ type TTerminal = Terminal<CrosstermBackend<Stdout>>;
 mod app;
 mod app_state;
 mod dao;
+mod input_form;
+mod path_utils;
 mod renamer;
-mod utils;
+mod stdlib_utils;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let db_path = std::env::args().nth(1).expect("arg 1: db.sqlite");
@@ -68,25 +70,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 fn run_app(terminal: &mut TTerminal, mut app: App) -> io::Result<()> {
     loop {
         terminal.draw(|f| ui(f, &mut app))?;
-
-        if let Event::Key(key) = event::read()? {
-            match key.code {
-                KeyCode::Up => app.on_up(),
-                KeyCode::Down => app.on_down(),
-                KeyCode::Enter => app.on_enter(),
-                KeyCode::Esc => app.on_esc(),
-                KeyCode::Backspace => app.on_bksp(),
-                KeyCode::Tab => app.on_tab(),
-                KeyCode::BackTab => app.on_backtab(),
-                KeyCode::Char(c) => {
-                    if app.requesting_input() {
-                        app.on_char(c)
-                    } else if c == 'q' {
-                        return Ok(());
-                    }
-                }
-                _ => {}
-            }
+        let event = event::read()?;
+        if let AppResult::Quit = app.on_event(event) {
+            return Ok(());
         }
     }
 }
@@ -356,72 +342,67 @@ fn ui_configure_mapping<B: Backend>(
                 .split(config_parent_layout[2]),
         ];
 
-        let input_block =
-            |f: &mut Frame<B>, rect: Rect, config_idx: usize, title: &str, is_valid: bool| {
-                let config_input_is_active = configure_mapping_state.is_active(config_idx);
-                let text = configure_mapping_state.input_val(config_idx);
+        let input_block = |f: &mut Frame<B>,
+                           rect: Rect,
+                           input_state: &TextInputState,
+                           title: &str,
+                           is_valid: bool| {
+            let border_style = if !is_valid {
+                Style::default().fg(Color::Red)
+            } else if input_state.is_focused() {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default()
+            };
 
-                let border_style = if !is_valid {
-                    Style::default().fg(Color::Red)
-                } else if config_input_is_active {
-                    Style::default().fg(Color::Yellow)
-                } else {
-                    Style::default()
-                };
-                let title_style = if config_input_is_active {
-                    border_style.add_modifier(Modifier::BOLD)
-                } else {
-                    border_style
-                };
+            let title_style = if input_state.is_focused() {
+                border_style.add_modifier(Modifier::BOLD)
+            } else {
+                border_style
+            };
 
-                let dir_matcher_block = Block::default()
+            let text_input = TextInput::new().focused_style(border_style).block(
+                Block::default()
                     .borders(Borders::ALL)
                     .style(border_style)
-                    .title(Span::styled(title, title_style));
-                let inside = dir_matcher_block.inner(rect);
-                f.render_widget(dir_matcher_block, rect);
-
-                let text_block = Paragraph::new(Text::raw(text));
-                f.render_widget(text_block, inside);
-
-                if config_input_is_active {
-                    f.set_cursor(rect.x + 1 + (text.len() as u16), rect.y + 1)
-                }
-            };
+                    .title(Span::styled(title, title_style)),
+            );
+            f.render_interactive(text_input, rect, input_state);
+        };
 
         let mapped_dir = &configure_mapping_state.mapped_dir;
         input_block(
             f,
             config_input_rects[0][0],
-            0,
+            &configure_mapping_state.file_ext_input_state,
             "File Types",
             mapped_dir.has_valid_file_filter(),
         );
         input_block(
             f,
             config_input_rects[1][0],
-            1,
+            &configure_mapping_state.dir_matcher_input_state,
             "Dir Matcher",
             mapped_dir.has_valid_dir_renamer(),
         );
         input_block(
             f,
             config_input_rects[1][1],
-            2,
+            &configure_mapping_state.dir_replacer_input_state,
             "Dir Replacer",
             mapped_dir.has_valid_dir_renamer(),
         );
         input_block(
             f,
             config_input_rects[2][0],
-            3,
+            &configure_mapping_state.file_matcher_input_state,
             "File Matcher",
             mapped_dir.has_valid_file_renamer(),
         );
         input_block(
             f,
             config_input_rects[2][1],
-            4,
+            &configure_mapping_state.file_replacer_input_state,
             "File Replacer",
             mapped_dir.has_valid_file_renamer(),
         );

@@ -1,10 +1,11 @@
 use std::{cell::RefCell, rc::Rc};
 
+use crossterm::event::{Event, KeyCode, KeyEvent};
 use tui::widgets::ListState;
 
 use crate::{
     dao::Dao,
-    utils::{compute_prefix, dir_name, join_path},
+    path_utils::{compute_prefix, dir_name, join_path},
 };
 
 use super::{
@@ -144,7 +145,26 @@ impl SelectingInputState {
 }
 
 impl AppState for SelectingInputState {
-    fn on_up(&mut self) -> AppTransition {
+    fn on_event(&mut self, event: Event) -> AppTransition {
+        match event {
+            Event::Key(key) => self.on_key(key),
+            _ => AppTransition::None,
+        }
+    }
+}
+
+impl SelectingInputState {
+    fn on_key(&mut self, key: KeyEvent) -> AppTransition {
+        match key.code {
+            KeyCode::Char('q') => AppTransition::Quit,
+            KeyCode::Enter => AppTransition::StartConfiguringIdx(self.selected_row_idx),
+            KeyCode::Up => self.select_prev(),
+            KeyCode::Down => self.select_next(),
+            _ => AppTransition::None,
+        }
+    }
+
+    fn select_prev(&mut self) -> AppTransition {
         if self.selected_row_idx > 0 {
             self.selected_row_idx -= 1;
         }
@@ -154,7 +174,7 @@ impl AppState for SelectingInputState {
         AppTransition::None
     }
 
-    fn on_down(&mut self) -> AppTransition {
+    fn select_next(&mut self) -> AppTransition {
         if self.selected_row_idx < self.mappings().len() - 1 {
             self.selected_row_idx += 1;
         }
@@ -162,13 +182,5 @@ impl AppState for SelectingInputState {
             .get_mut()
             .select(Some(self.selected_row_idx));
         AppTransition::None
-    }
-
-    fn on_enter(&mut self) -> AppTransition {
-        AppTransition::StartConfiguringIdx(self.selected_row_idx)
-    }
-
-    fn requesting_input(&self) -> bool {
-        false
     }
 }
