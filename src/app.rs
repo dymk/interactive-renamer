@@ -27,7 +27,7 @@ impl App {
         App {
             // dao: dao.clone(),
             selecting_input_state: SelectingInputState::new(
-                dao.clone(),
+                dao,
                 in_dir.to_string(),
                 out_dir.to_string(),
             ),
@@ -39,7 +39,7 @@ impl App {
         if let Some(cms) = self.configure_mapping_state.as_mut() {
             return cms;
         }
-        return &mut self.selecting_input_state;
+        &mut self.selecting_input_state
     }
 
     pub fn on_event(&mut self, event: Event) -> AppResult {

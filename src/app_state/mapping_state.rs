@@ -120,10 +120,10 @@ impl MappedDir {
                     });
                 }
 
-                return Some(FileMapping::MappedTo {
+                Some(FileMapping::MappedTo {
                     from_name: path.clone(),
                     to_name: path.clone(),
-                });
+                })
             })
             .collect();
     }
@@ -159,7 +159,7 @@ impl MappedDir {
 fn build_file_filter_regex(s: &str) -> Option<Regex> {
     let j = s
         .to_string()
-        .split(",")
+        .split(',')
         .map(regex::escape)
         .collect::<Vec<_>>()
         .join("|");

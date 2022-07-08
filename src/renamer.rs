@@ -20,9 +20,9 @@ impl Renamer {
     }
 
     pub fn process(&self, input: &str) -> String {
-        let captures = match self.finder.captures(&input) {
+        let captures = match self.finder.captures(input) {
             Some(cap) => cap,
-            None => return self.replacer.to_string().clone(),
+            None => return self.replacer.to_string(),
         };
 
         let mut replaced = self.replacer.to_string();

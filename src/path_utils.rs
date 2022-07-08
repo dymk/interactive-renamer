@@ -37,8 +37,8 @@ pub fn join_path(mut a: &str, b: &str) -> String {
 }
 
 pub fn compute_prefix_raw(a: &str, b: &str) -> String {
-    let a_components = a.split("/").filter(|s| s.len() > 0);
-    let b_components = b.split("/").filter(|s| s.len() > 0);
+    let a_components = a.split('/').filter(|s| !s.is_empty());
+    let b_components = b.split('/').filter(|s| !s.is_empty());
 
     let prefix_count = a_components
         .clone()
@@ -55,7 +55,7 @@ pub fn compute_prefix_raw(a: &str, b: &str) -> String {
 
 pub fn compute_prefix(a: &str, b: &str) -> String {
     let ret = compute_prefix_raw(a, b);
-    return if ret == "" { "./".into() } else { ret + "/" };
+    if ret.is_empty() { "./".into() } else { ret + "/" }
 }
 
 #[cfg(test)]

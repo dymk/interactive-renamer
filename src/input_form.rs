@@ -48,7 +48,7 @@ impl<T: InputFormBacking> InputForm for T {
         );
 
         self.set_focused_state_idx(new_idx);
-        focused_input_idx_mut(self).map(|(_, state)| state.focus());
+        if let Some((_, state)) = focused_input_idx_mut(self) { state.focus() }
     }
 
     fn focus_prev_input(&mut self) {
@@ -66,7 +66,7 @@ impl<T: InputFormBacking> InputForm for T {
         );
 
         self.set_focused_state_idx(new_idx);
-        focused_input_idx_mut(self).map(|(_, state)| state.focus());
+        if let Some((_, state)) = focused_input_idx_mut(self) { state.focus() }
     }
 
     fn any_inputs_focused(&self) -> bool {
@@ -74,7 +74,7 @@ impl<T: InputFormBacking> InputForm for T {
     }
 
     fn unfocus_inputs(&mut self) {
-        focused_input_idx_mut(self).map(|(_, state)| state.unfocus());
+        if let Some((_, state)) = focused_input_idx_mut(self) { state.unfocus() }
         self.set_focused_state_idx(None);
     }
 }

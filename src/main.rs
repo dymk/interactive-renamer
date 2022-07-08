@@ -78,10 +78,10 @@ fn run_app(terminal: &mut TTerminal, mut app: App) -> io::Result<()> {
 }
 
 fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
-    let is_selecting = !app.configure_mapping_state.is_some();
+    let is_selecting = app.configure_mapping_state.is_none();
     ui_selecting_input(f, app, is_selecting);
     if let Some(state) = &app.configure_mapping_state {
-        ui_configure_mapping(f, app, &state);
+        ui_configure_mapping(f, app, state);
     }
 }
 

@@ -47,7 +47,7 @@ impl SelectingInputState {
     }
 
     pub fn list_state(&self) -> &RefCell<ListState> {
-        return &self.list_state;
+        &self.list_state
     }
 
     pub fn in_dir(&self) -> &str {
@@ -109,11 +109,11 @@ impl SelectingInputState {
                         let in_file_path =
                             format!("{}/{}", new_mapped_dir.in_dir_path(), &from_name);
 
-                        let out_file_path = join_path(&new_out_dir_path, &to_name);
+                        let out_file_path = join_path(&new_out_dir_path, to_name);
 
                         let in_file_rel_path =
                             compute_prefix(dir_name(&in_file_path), dir_name(&out_file_path))
-                                + &from_name;
+                                + from_name;
 
                         self.add_log(format!("in file:  {}", in_file_path));
                         self.add_log(format!("out file: {}", out_file_path));
@@ -140,7 +140,7 @@ impl SelectingInputState {
     }
 
     pub fn get_logs(&self) -> &Vec<String> {
-        return &self.logs;
+        &self.logs
     }
 }
 
