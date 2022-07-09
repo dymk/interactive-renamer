@@ -1,9 +1,8 @@
-
 use regex::Regex;
 
 use crate::{
-    renamer::Renamer,
     path_utils::{file_name, split_ext},
+    renamer::Renamer,
 };
 
 pub const NUM_CONFIGS: usize = 5;
@@ -93,14 +92,14 @@ impl MappedDir {
         self.file_mappings = self
             .in_file_list
             .iter()
-            .filter_map(|path| {
+            .map(|path| {
                 let path = path.clone();
                 let (basename, ext) = split_ext(path.as_str());
 
                 if let Some(ext_matcher) = &self.file_filter_regex {
                     if let Some(ext) = ext {
                         if !ext_matcher.is_match(ext) {
-                            return Some(FileMapping::Filtered { name: path.clone() });
+                            return FileMapping::Filtered { name: path.clone() };
                         }
                     }
                 }
@@ -114,16 +113,16 @@ impl MappedDir {
                         renamed
                     };
 
-                    return Some(FileMapping::MappedTo {
+                    return FileMapping::MappedTo {
                         from_name: path.clone(),
                         to_name: to_path,
-                    });
+                    };
                 }
 
-                Some(FileMapping::MappedTo {
+                FileMapping::MappedTo {
                     from_name: path.clone(),
                     to_name: path.clone(),
-                })
+                }
             })
             .collect();
     }
@@ -149,9 +148,11 @@ impl MappedDir {
         ]
     }
 
-    pub fn set_config(&mut self, idx: usize, new_val: &str)
-    {
-        self.configs.get_mut(idx).unwrap().replace_range(.., new_val);
+    pub fn set_config(&mut self, idx: usize, new_val: &str) {
+        self.configs
+            .get_mut(idx)
+            .unwrap()
+            .replace_range(.., new_val);
         self.configs_changed();
     }
 }

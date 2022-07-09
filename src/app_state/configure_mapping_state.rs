@@ -1,7 +1,7 @@
 use crossterm::event::{Event, KeyCode, KeyEvent};
 use tui::widgets::{InteractiveWidgetState, TextInputState};
 
-use crate::input_form::{InputForm, InputFormBacking};
+use crate::input_form::{InputForm, InputFormHooks};
 
 use super::{app_transition::AppTransition, mapping_state::MappedDir, AppState};
 
@@ -17,7 +17,7 @@ pub struct ConfigureMappingState {
     pub file_replacer_input_state: TextInputState,
 }
 
-impl InputFormBacking for ConfigureMappingState {
+impl InputFormHooks for ConfigureMappingState {
     fn input_states_len(&self) -> usize {
         5
     }

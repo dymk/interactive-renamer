@@ -69,7 +69,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 fn run_app(terminal: &mut TTerminal, mut app: App) -> io::Result<()> {
     loop {
-        terminal.draw(|f| ui(f, &mut app))?;
+        terminal.draw(|f| ui(f, &app))?;
         let event = event::read()?;
         if let AppResult::Quit = app.on_event(event) {
             return Ok(());

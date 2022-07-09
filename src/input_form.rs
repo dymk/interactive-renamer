@@ -7,7 +7,7 @@ use crate::stdlib_utils::AndThenOrOption;
  * Structs that implement `InputFormBacking` hooks will automatically get an
  * implementation of `InputForm`
 */
-pub trait InputFormBacking {
+pub trait InputFormHooks {
     fn focused_state_idx(&self) -> Option<usize>;
     fn set_focused_state_idx(&mut self, idx: Option<usize>);
     fn input_states_len(&self) -> usize;
@@ -22,7 +22,7 @@ pub trait InputForm {
     fn unfocus_inputs(&mut self);
 }
 
-impl<T: InputFormBacking> InputForm for T {
+impl<T: InputFormHooks> InputForm for T {
     fn handle_input(&mut self, event: Event) -> InteractionOutcome {
         self.focused_state_idx()
             .map_or(InteractionOutcome::Bubble, |idx| {
@@ -80,7 +80,7 @@ impl<T: InputFormBacking> InputForm for T {
 }
 
 fn focused_input_idx_mut(
-    this: &mut dyn InputFormBacking,
+    this: &mut dyn InputFormHooks,
 ) -> Option<(usize, &mut dyn InteractiveWidgetState)> {
     this.focused_state_idx()
         .and_then(|idx| this.input_state_at_mut(idx).map(|state| (idx, state)))
