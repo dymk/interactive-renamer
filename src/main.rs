@@ -29,10 +29,8 @@ type TTerminal = Terminal<CrosstermBackend<Stdout>>;
 mod app;
 mod app_state;
 mod dao;
-mod input_form;
 mod path_utils;
 mod renamer;
-mod stdlib_utils;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let db_path = std::env::args().nth(1).expect("arg 1: db.sqlite");
@@ -374,35 +372,35 @@ fn ui_configure_mapping<B: Backend>(
         input_block(
             f,
             config_input_rects[0][0],
-            &configure_mapping_state.file_ext_input_state,
+            &configure_mapping_state.form.file_ext_input_state,
             "File Types",
             mapped_dir.has_valid_file_filter(),
         );
         input_block(
             f,
             config_input_rects[1][0],
-            &configure_mapping_state.dir_matcher_input_state,
+            &configure_mapping_state.form.dir_matcher_input_state,
             "Dir Matcher",
             mapped_dir.has_valid_dir_renamer(),
         );
         input_block(
             f,
             config_input_rects[1][1],
-            &configure_mapping_state.dir_replacer_input_state,
+            &configure_mapping_state.form.dir_replacer_input_state,
             "Dir Replacer",
             mapped_dir.has_valid_dir_renamer(),
         );
         input_block(
             f,
             config_input_rects[2][0],
-            &configure_mapping_state.file_matcher_input_state,
+            &configure_mapping_state.form.file_matcher_input_state,
             "File Matcher",
             mapped_dir.has_valid_file_renamer(),
         );
         input_block(
             f,
             config_input_rects[2][1],
-            &configure_mapping_state.file_replacer_input_state,
+            &configure_mapping_state.form.file_replacer_input_state,
             "File Replacer",
             mapped_dir.has_valid_file_renamer(),
         );

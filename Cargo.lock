@@ -312,7 +312,7 @@ checksum = "2fd0db749597d91ff862fd1d55ea87f7855a744a8425a64695b6fca237d1dad1"
 [[package]]
 name = "tui"
 version = "0.18.0"
-source = "git+https://github.com/dymk/tui-rs?rev=7f689274677dff2fd5769e04b9c2032c2ee10054#7f689274677dff2fd5769e04b9c2032c2ee10054"
+source = "git+https://github.com/dymk/tui-rs?rev=188832d6fb9d072a432f9d786f7a0476d8a9131d#188832d6fb9d072a432f9d786f7a0476d8a9131d"
 dependencies = [
  "bitflags",
  "cassowary",
