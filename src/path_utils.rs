@@ -55,7 +55,11 @@ pub fn compute_prefix_raw(a: &str, b: &str) -> String {
 
 pub fn compute_prefix(a: &str, b: &str) -> String {
     let ret = compute_prefix_raw(a, b);
-    if ret.is_empty() { "./".into() } else { ret + "/" }
+    if ret.is_empty() {
+        "./".into()
+    } else {
+        ret + "/"
+    }
 }
 
 #[cfg(test)]

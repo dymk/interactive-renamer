@@ -2,18 +2,21 @@ use super::{app_transition::AppTransition, mapping_state::MappedDir, AppState};
 use crossterm::event::{Event, KeyCode, KeyEvent};
 use tui::{
     interactive_form::InteractiveForm,
-    interactive_form_state,
     widgets::{InteractiveWidgetState, TextInputState},
 };
 
-interactive_form_state! {
-    pub struct ConfigureMappingFormState {
-        pub file_ext_input_state: TextInputState = "mkv,mp4,avi",
-        pub dir_matcher_input_state: TextInputState = "(.+)",
-        pub dir_replacer_input_state: TextInputState = "$1",
-        pub file_matcher_input_state: TextInputState = "(.+)",
-        pub file_replacer_input_state: TextInputState = "$1",
-    }
+#[tui::macros::interactive_form]
+pub struct ConfigureMappingFormState {
+    #[default("mkv,mp4,avi")]
+    pub file_ext_input_state: TextInputState,
+    #[default("(.+)")]
+    pub dir_matcher_input_state: TextInputState,
+    #[default("$1")]
+    pub dir_replacer_input_state: TextInputState,
+    #[default("(.+)")]
+    pub file_matcher_input_state: TextInputState,
+    #[default("$1")]
+    pub file_replacer_input_state: TextInputState,
 }
 
 pub struct ConfigureMappingState {

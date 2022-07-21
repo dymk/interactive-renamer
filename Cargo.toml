@@ -15,5 +15,5 @@ itertools = "0.10.3"
 git = "https://github.com/dymk/tui-rs"
 rev = "188832d6fb9d072a432f9d786f7a0476d8a9131d"
 
-# [patch.'https://github.com/dymk/tui-rs']
-# tui = { path = "../tui-rs" }
+[patch.'https://github.com/dymk/tui-rs']
+tui = { path = "../tui-rs" }
